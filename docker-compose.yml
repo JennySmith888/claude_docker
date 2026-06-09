@@ -1,0 +1,62 @@
+services:
+  proxy:
+    image: ubuntu/squid
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:ro
+    networks:
+      - isolated
+      - internet
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+
+  agent:
+    build: .
+    depends_on:
+      - proxy
+    stdin_open: true
+    tty: true
+    environment:
+      - HTTP_PROXY=http://proxy:3128
+      - HTTPS_PROXY=http://proxy:3128
+      - http_proxy=http://proxy:3128
+      - https_proxy=http://proxy:3128
+      - DISABLE_AUTOUPDATER=1
+      # ANTHROPIC_API_KEY intentionally omitted — loaded from ~/.claude/settings.json
+    volumes:
+      - ${WORKSPACE:-./workspace}:/workspace
+      - ${HOME}/.claude:/host-claude:ro
+      - ${HOME}/.claude.json:/host-claude.json:ro
+      - ${HOME}/.claude-docker-home:/home/node
+      - type: tmpfs
+        target: /tmp
+        tmpfs:
+          size: 100m
+          mode: 01777
+    networks:
+      - isolated
+    user: "1000:1000"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "${AGENT_CPUS:-2}"
+          memory: "${AGENT_MEMORY:-4g}"
+          pids: 200
+    profiles:
+      - run
+
+networks:
+  isolated:
+    internal: true
+  internet:
+    driver: bridge
